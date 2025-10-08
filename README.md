@@ -89,10 +89,58 @@ python run_monitor.py
 
 ### Cloud Functions デプロイ
 
+Google Cloud Functionsにデプロイする手順：
+
+#### 前提条件
+- Google Cloud SDKがインストールされていること
+- Google Cloudプロジェクトが作成されていること
+- 必要なAPIが有効化されていること
+
+#### デプロイ手順
+
 ```bash
-# Cloud Functions用のエントリーポイント
-# main.py を使用してデプロイ
+# 1. Google Cloud にログイン
+gcloud auth login
+
+# 2. プロジェクトを設定
+gcloud config set project YOUR_PROJECT_ID
+
+# 3. Cloud Functionsにデプロイ
+gcloud functions deploy process_drive_files \
+  --runtime python311 \
+  --trigger-http \
+  --allow-unauthenticated \
+  --entry-point process_drive_files \
+  --source . \
+  --timeout 540s \
+  --memory 512MB \
+  --set-env-vars GOOGLE_SHEETS_SPREADSHEET_ID=1Dvz3cS9DRGx4woEY0NNypgLPKxLZ55a4j8778YlCFls
+
+# 4. サービスアカウントキーを追加（GCPコンソールから設定）
+# または Secret Manager を使用してキーを管理
 ```
+
+#### Cloud Schedulerで定期実行
+
+```bash
+# 5分ごとに実行するスケジュールを作成
+gcloud scheduler jobs create http drive-monitor-job \
+  --schedule="*/5 * * * *" \
+  --uri="https://REGION-PROJECT_ID.cloudfunctions.net/process_drive_files" \
+  --http-method=GET \
+  --location=asia-northeast1
+```
+
+#### 環境変数の設定
+
+デプロイ時に環境変数を設定する場合：
+
+```bash
+gcloud functions deploy process_drive_files \
+  --set-env-vars GOOGLE_SHEETS_SPREADSHEET_ID=YOUR_SPREADSHEET_ID,GOOGLE_SHEETS_CREDENTIALS_JSON=service_account.json
+```
+
+または、Google Cloud コンソールから「環境変数」セクションで設定できます。
 
 ## ファイル構成
 
