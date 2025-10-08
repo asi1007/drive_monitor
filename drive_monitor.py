@@ -36,7 +36,7 @@ class DriveMonitor:
         ]
 
         # フォルダID（URLから抽出）
-        self.ocs_folder_id = "1A81Tu1C0msfmWmWpDViC1Lzq7xQLhQ1U"  # OCSフォルダ
+        self.ocs_folder_id = "1hgAHbzyXZ2mkHen05T3KlWMr152rqO2L"  # 統一フォルダ
 
         # 認証とサービス初期化
         self._init_services()

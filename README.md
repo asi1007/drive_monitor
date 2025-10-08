@@ -14,19 +14,19 @@ Google Driveに保存された請求書ファイルを自動監視し、ASINと�
 ## 対応ファイル形式
 
 ### 1. OCS形式
-- **保存場所**: [OCSフォルダ](https://drive.google.com/drive/u/1/folders/1A81Tu1C0msfmWmWpDViC1Lzq7xQLhQ1U)
+- **保存場所**: [統一フォルダ](https://drive.google.com/drive/u/1/folders/1hgAHbzyXZ2mkHen05T3KlWMr152rqO2L)
 - **ファイル名**: "OCS"を含む
 - **追跡番号**: G2セル
 - **ASIN**: G17以降のセル
 
 ### 2. TW形式
-- **保存場所**: [TWスプレッドシート](https://docs.google.com/spreadsheets/d/1Dvz3cS9DRGx4woEY0NNypgLPKxLZ55a4j8778YlCFls/edit?gid=1268680191#gid=1268680191)
+- **保存場所**: [統一フォルダ](https://drive.google.com/drive/u/1/folders/1hgAHbzyXZ2mkHen05T3KlWMr152rqO2L)
 - **ファイル名**: "TW"を含む
 - **追跡番号**: A12セル
 - **ASIN**: K16以降のセル
 
 ### 3. YP形式
-- **保存場所**: Google Drive（OCSフォルダと同じ場所）
+- **保存場所**: [統一フォルダ](https://drive.google.com/drive/u/1/folders/1hgAHbzyXZ2mkHen05T3KlWMr152rqO2L)
 - **ファイル名**: "YP"を含む
 - **ファイル形式**: Excelファイル（.xls, .xlsx）
 - **追跡番号**: F12セル
