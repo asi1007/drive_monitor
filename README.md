@@ -34,13 +34,29 @@ Google Driveに保存された請求書ファイルを自動監視し、ASINと�
 
 ## セットアップ
 
-### 1. 必要なライブラリのインストール
+### 1. 仮想環境の作成と有効化
+
+```bash
+# 仮想環境を作成
+python3 -m venv venv
+
+# 仮想環境を有効化
+# macOS/Linux:
+source venv/bin/activate
+
+# Windows:
+# venv\Scripts\activate
+```
+
+### 2. 必要なライブラリのインストール
+
+仮想環境を有効化した状態で、依存パッケージをインストール：
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. 環境変数の設定
+### 3. 環境変数の設定
 
 `.env`ファイルを作成し、以下の環境変数を設定してください：
 
@@ -49,7 +65,7 @@ GOOGLE_SHEETS_CREDENTIALS_JSON=service_account.json
 GOOGLE_SHEETS_SPREADSHEET_ID=1Dvz3cS9DRGx4woEY0NNypgLPKxLZ55a4j8778YlCFls
 ```
 
-### 3. Google API認証の設定
+### 4. Google API認証の設定
 
 1. Google Cloud Consoleでプロジェクトを作成
 2. Google Sheets APIとGoogle Drive APIを有効化
@@ -61,7 +77,13 @@ GOOGLE_SHEETS_SPREADSHEET_ID=1Dvz3cS9DRGx4woEY0NNypgLPKxLZ55a4j8778YlCFls
 
 ### 単発実行
 
+仮想環境を有効化した状態で実行：
+
 ```bash
+# 仮想環境を有効化（まだの場合）
+source venv/bin/activate
+
+# スクリプト実行
 python run_monitor.py
 ```
 
@@ -80,7 +102,9 @@ python run_monitor.py
 ├── run_monitor.py       # 単発実行用スクリプト
 ├── requirements.txt     # 依存関係
 ├── .env                 # 環境変数設定
+├── .gitignore           # Git無視ファイル
 ├── service_account.json # Google API認証情報
+├── venv/                # 仮想環境（.gitignoreで除外）
 └── spec/
     ├── drive_monitor.md # 仕様書
     └── n8n.json         # n8nワークフロー設定
