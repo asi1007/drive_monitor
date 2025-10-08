@@ -36,7 +36,7 @@ class DriveMonitor:
         ]
 
         # フォルダID（URLから抽出）
-        self.ocs_folder_id = "1hgAHbzyXZ2mkHen05T3KlWMr152rqO2L"  # 統一フォルダ
+        self.folder_id = "1hgAHbzyXZ2mkHen05T3KlWMr152rqO2L"  # 統一フォルダ
 
         # 認証とサービス初期化
         self._init_services()
@@ -132,8 +132,20 @@ class DriveMonitor:
             logger.error(f"ファイル取得エラー: {e}")
             return []
 
-    def process_excel_file(self, file_id, filename):
-        """Excelファイルをダウンロードしてpandasで処理"""
+    def process_excel_file(self, file_id, filename, file_type, tracking_cell, asin_start_cell):
+        """
+        Excelファイルをダウンロードしてpandasで処理（統一メソッド）
+        
+        Args:
+            file_id: Google DriveのファイルID
+            filename: ファイル名
+            file_type: ファイルタイプ（OCS/TW/YP）
+            tracking_cell: 追跡番号のセル位置 (row, col) - 0ベース
+            asin_start_cell: ASINの開始セル位置 (row, col) - 0ベース
+        
+        Returns:
+            tuple: (追跡番号, ASINリスト)
+        """
         try:
             # ファイルをダウンロード
             request = self.drive_service.files().get_media(fileId=file_id)
@@ -148,38 +160,42 @@ class DriveMonitor:
 
             # pandasでExcelファイルを読み込み（ヘッダーなし）
             df = pd.read_excel(file_content, engine='openpyxl', header=None)
-            print(df.head())
 
-            # 追跡番号をG2から取得 (Excel G2 = pandas行1, 列6)
+            # 追跡番号を取得
             tracking_number = None
-            if len(df) > 1 and len(df.columns) > 6:
-                tracking_value = df.iloc[1, 6]  # G2
+            tracking_row, tracking_col = tracking_cell
+            if len(df) > tracking_row and len(df.columns) > tracking_col:
+                tracking_value = df.iloc[tracking_row, tracking_col]
                 if pd.notna(tracking_value):
                     tracking_number = str(tracking_value).strip()
 
-            # ASINをD17以降から取得 (Excel D17 = pandas行16, 列3)
+            # ASINを取得
             asin_list = []
-            if len(df.columns) > 3:
-                for i in range(16, len(df)):  # Excel 17行目以降 = pandas 16以降
+            asin_start_row, asin_col = asin_start_cell
+            if len(df.columns) > asin_col:
+                for i in range(asin_start_row, len(df)):
                     if i < len(df):
-                        asin_value = df.iloc[i, 3]  # D列 = 列3
+                        asin_value = df.iloc[i, asin_col]
                         if pd.notna(asin_value) and str(asin_value).strip():
                             asin_list.append(str(asin_value).strip())
                         else:
                             break
 
-            logger.info(f"Excelファイル {filename}: 追跡番号={tracking_number}, ASIN数={len(asin_list)}")
+            logger.info(f"{file_type}ファイル {filename}: 追跡番号={tracking_number}, ASIN数={len(asin_list)}")
             return tracking_number, asin_list
 
         except Exception as e:
-            logger.error(f"Excel処理エラー {filename}: {e}")
+            logger.error(f"{file_type} Excel処理エラー {filename}: {e}")
             return None, []
 
     def process_ocs_file(self, file_id, filename):
         """OCSファイルを処理してASINと追跡番号を取得（Excelファイルのみ対応）"""
         # Excelファイルのみ処理
         if filename.lower().endswith(('.xls', '.xlsx')):
-            return self.process_excel_file(file_id, filename)
+            # OCS: 追跡番号=G2(行1,列6), ASIN=G17以降(行16,列6)
+            return self.process_excel_file(file_id, filename, "OCS", 
+                                         tracking_cell=(1, 6), 
+                                         asin_start_cell=(16, 6))
         else:
             logger.info(f"ファイル {filename} はExcelファイルではありません")
             return None, []
@@ -188,102 +204,24 @@ class DriveMonitor:
         """TWファイルを処理してASINと追跡番号を取得（Excelファイルのみ対応）"""
         # Excelファイルのみ処理
         if filename.lower().endswith(('.xls', '.xlsx')):
-            return self.process_excel_tw_file(file_id, filename)
+            # TW: 追跡番号=A12(行11,列0), ASIN=K16以降(行15,列10)
+            return self.process_excel_file(file_id, filename, "TW",
+                                         tracking_cell=(11, 0),
+                                         asin_start_cell=(15, 10))
         else:
             logger.info(f"ファイル {filename} はExcelファイルではありません")
-            return None, []
-
-    def process_excel_tw_file(self, file_id, filename):
-        """TWのExcelファイルをダウンロードしてpandasで処理"""
-        try:
-            # ファイルをダウンロード
-            request = self.drive_service.files().get_media(fileId=file_id)
-            file_content = io.BytesIO()
-            downloader = MediaIoBaseDownload(file_content, request)
-
-            done = False
-            while done is False:
-                status, done = downloader.next_chunk()
-
-            file_content.seek(0)
-
-            # pandasでExcelファイルを読み込み（ヘッダーなし）
-            df = pd.read_excel(file_content, engine='openpyxl', header=None)
-
-            # 追跡番号をA12から取得 (Excel A12 = pandas行11, 列0)
-            tracking_number = None
-            if len(df) > 11 and len(df.columns) > 0:
-                tracking_value = df.iloc[11, 0]  # A12
-                if pd.notna(tracking_value):
-                    tracking_number = str(tracking_value).strip()
-
-            # ASINをK16以降から取得 (Excel K16 = pandas行15, 列10)
-            asin_list = []
-            if len(df.columns) > 10:  # K列 = 列10
-                for i in range(15, len(df)):  # Excel 16行目以降 = pandas 15以降
-                    if i < len(df):
-                        asin_value = df.iloc[i, 10]  # K列 = 列10
-                        if pd.notna(asin_value) and str(asin_value).strip():
-                            asin_list.append(str(asin_value).strip())
-                        else:
-                            break
-
-            logger.info(f"TWファイル {filename}: 追跡番号={tracking_number}, ASIN数={len(asin_list)}")
-            return tracking_number, asin_list
-
-        except Exception as e:
-            logger.error(f"TW Excel処理エラー {filename}: {e}")
             return None, []
 
     def process_yp_file(self, file_id, filename):
         """YPファイルを処理してASINと追跡番号を取得（Excelファイルのみ対応）"""
         # Excelファイルのみ処理
         if filename.lower().endswith(('.xls', '.xlsx')):
-            return self.process_excel_yp_file(file_id, filename)
+            # YP: 追跡番号=F12(行11,列5), ASIN=J21以降(行20,列9)
+            return self.process_excel_file(file_id, filename, "YP",
+                                         tracking_cell=(11, 5),
+                                         asin_start_cell=(20, 9))
         else:
             logger.info(f"ファイル {filename} はExcelファイルではありません")
-            return None, []
-
-    def process_excel_yp_file(self, file_id, filename):
-        """YPのExcelファイルをダウンロードしてpandasで処理"""
-        try:
-            # ファイルをダウンロード
-            request = self.drive_service.files().get_media(fileId=file_id)
-            file_content = io.BytesIO()
-            downloader = MediaIoBaseDownload(file_content, request)
-
-            done = False
-            while done is False:
-                _, done = downloader.next_chunk()
-
-            file_content.seek(0)
-
-            # pandasでExcelファイルを読み込み（ヘッダーなし）
-            df = pd.read_excel(file_content, engine='openpyxl', header=None)
-
-            # 追跡番号をF12から取得 (Excel F12 = pandas行11, 列5)
-            tracking_number = None
-            if len(df) > 11 and len(df.columns) > 5:
-                tracking_value = df.iloc[11, 5]  # F12
-                if pd.notna(tracking_value):
-                    tracking_number = str(tracking_value).strip()
-
-            # ASINをJ21以降から取得 (Excel J21 = pandas行20, 列9)
-            asin_list = []
-            if len(df.columns) > 9:  # J列 = 列9
-                for i in range(20, len(df)):  # Excel 21行目以降 = pandas 20以降
-                    if i < len(df):
-                        asin_value = df.iloc[i, 9]  # J列 = 列9
-                        if pd.notna(asin_value) and str(asin_value).strip():
-                            asin_list.append(str(asin_value).strip())
-                        else:
-                            break
-
-            logger.info(f"YPファイル {filename}: 追跡番号={tracking_number}, ASIN数={len(asin_list)}")
-            return tracking_number, asin_list
-
-        except Exception as e:
-            logger.error(f"YP Excel処理エラー {filename}: {e}")
             return None, []
 
     def write_to_invoice_sheet(self, tracking_number, asin_list, file_type, filename):
@@ -352,7 +290,7 @@ class DriveMonitor:
 
         try:
             # OCSフォルダから新しいファイルを取得（過去5分間）
-            new_files = self.get_recent_files(self.ocs_folder_id, hours=0.084)  # 5分 = 0.084時間
+            new_files = self.get_recent_files(self.folder_id, hours=0.084)  # 5分 = 0.084時間
 
             if not new_files:
                 logger.info("新しいファイルは見つかりませんでした")
