@@ -7,7 +7,7 @@ Google Driveに保存された請求書ファイルを自動監視し、ASINと�
 このシステムは以下の機能を提供します：
 
 - Google Driveの指定フォルダを監視
-- 新しいファイル（OCS、TW形式）を自動検出
+- 新しいファイル（OCS、TW、YP形式）を自動検出
 - ファイルからASINと追跡番号を抽出
 - Google Sheetsの「invoice」シートに自動記録
 
@@ -24,6 +24,13 @@ Google Driveに保存された請求書ファイルを自動監視し、ASINと�
 - **ファイル名**: "TW"を含む
 - **追跡番号**: A12セル
 - **ASIN**: K16以降のセル
+
+### 3. YP形式
+- **保存場所**: Google Drive（OCSフォルダと同じ場所）
+- **ファイル名**: "YP"を含む
+- **ファイル形式**: Excelファイル（.xls, .xlsx）
+- **追跡番号**: F12セル
+- **ASIN**: J21以降のセル
 
 ## セットアップ
 
@@ -88,6 +95,7 @@ python run_monitor.py
 - **`monitor_continuously()`**: 継続的な監視（開発用）
 - **`process_ocs_file()`**: OCS形式ファイルの処理
 - **`process_tw_file()`**: TW形式ファイルの処理
+- **`process_yp_file()`**: YP形式ファイルの処理
 - **`update_sheet()`**: Google Sheetsへのデータ更新
 
 ## ログ
