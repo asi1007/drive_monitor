@@ -123,9 +123,9 @@ gcloud functions deploy process_drive_files \
 #### Cloud Schedulerで定期実行
 
 ```bash
-# 5分ごとに実行するスケジュールを作成
+# 1時間ごとに実行するスケジュールを作成
 gcloud scheduler jobs create http drive-monitor-job \
-  --schedule="*/5 * * * *" \
+  --schedule="0 * * * *" \
   --uri="https://REGION-PROJECT_ID.cloudfunctions.net/process_drive_files" \
   --http-method=GET \
   --location=asia-northeast1

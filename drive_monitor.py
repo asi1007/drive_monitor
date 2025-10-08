@@ -329,8 +329,8 @@ class DriveMonitor:
         logger.info("Google Drive ファイルチェックを開始します...")
 
         try:
-            # OCSフォルダから新しいファイルを取得（過去5分間）
-            new_files = self.get_recent_files(self.folder_id, hours=0.084)  # 5分 = 0.084時間
+            # フォルダから新しいファイルを取得（過去1時間）
+            new_files = self.get_recent_files(self.folder_id, hours=1)
 
             if not new_files:
                 logger.info("新しいファイルは見つかりませんでした")
