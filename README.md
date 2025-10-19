@@ -105,42 +105,59 @@ gcloud auth login
 # 2. プロジェクトを設定
 gcloud config set project YOUR_PROJECT_ID
 
-# 3. Cloud Functionsにデプロイ
+# 3. Secret Managerにサービスアカウントキーを保存
+gcloud secrets create invoice-service-account \
+  --data-file=service_account.json \
+  --replication-policy="automatic"
+
+# 4. Cloud Functionsサービスアカウントに権限を付与
+gcloud secrets add-iam-policy-binding invoice-service-account \
+  --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+
+# 5. Cloud Build用サービスアカウントに権限を付与
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member=serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com \
+  --role=roles/cloudbuild.builds.builder
+
+# 6. Cloud Functionsにデプロイ（Secret Managerを使用）
 gcloud functions deploy process_drive_files \
+  --gen2 \
   --runtime python311 \
   --trigger-http \
-  --allow-unauthenticated \
   --entry-point process_drive_files \
   --source . \
+  --region us-central1 \
   --timeout 540s \
   --memory 512MB \
-  --set-env-vars GOOGLE_SHEETS_SPREADSHEET_ID=1Dvz3cS9DRGx4woEY0NNypgLPKxLZ55a4j8778YlCFls
-
-# 4. サービスアカウントキーを追加（GCPコンソールから設定）
-# または Secret Manager を使用してキーを管理
+  --set-env-vars GOOGLE_SHEETS_SPREADSHEET_ID=1Dvz3cS9DRGx4woEY0NNypgLPKxLZ55a4j8778YlCFls,GOOGLE_SHEETS_CREDENTIALS_JSON=/secrets/service_account/service_account.json \
+  --set-secrets /secrets/service_account/service_account.json=invoice-service-account:latest
 ```
+
+**注意**: `service_account.json`はSecret Managerで管理されるため、デプロイパッケージに含まれません。
 
 #### Cloud Schedulerで定期実行
 
 ```bash
-# 1時間ごとに実行するスケジュールを作成
+# 1時間ごとに実行するスケジュールを作成（日本時間）
 gcloud scheduler jobs create http drive-monitor-job \
+  --location=asia-northeast1 \
   --schedule="0 * * * *" \
-  --uri="https://REGION-PROJECT_ID.cloudfunctions.net/process_drive_files" \
+  --time-zone="Asia/Tokyo" \
+  --uri="https://us-central1-YOUR_PROJECT_ID.cloudfunctions.net/process_drive_files" \
   --http-method=GET \
-  --location=asia-northeast1
+  --oidc-service-account-email=PROJECT_NUMBER-compute@developer.gserviceaccount.com \
+  --oidc-token-audience="https://us-central1-YOUR_PROJECT_ID.cloudfunctions.net/process_drive_files"
 ```
 
-#### 環境変数の設定
+**注意**: 認証が必要なCloud Functionsの場合、`--oidc-service-account-email`と`--oidc-token-audience`を指定してください。
 
-デプロイ時に環境変数を設定する場合：
+#### Secret Managerを使用するメリット
 
-```bash
-gcloud functions deploy process_drive_files \
-  --set-env-vars GOOGLE_SHEETS_SPREADSHEET_ID=YOUR_SPREADSHEET_ID,GOOGLE_SHEETS_CREDENTIALS_JSON=service_account.json
-```
-
-または、Google Cloud コンソールから「環境変数」セクションで設定できます。
+- **セキュリティ向上**: サービスアカウントキーがコードリポジトリやデプロイパッケージに含まれません
+- **管理の簡素化**: キーのローテーションがSecret Manager上で一元管理できます
+- **監査**: Secret Managerのアクセスログで誰がいつアクセスしたか追跡できます
+- **コード変更不要**: `--set-secrets`オプションでファイルとしてマウントされるため、既存のコードをそのまま使用できます
 
 ## ファイル構成
 

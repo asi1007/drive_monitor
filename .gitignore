@@ -53,3 +53,6 @@ venv.bak/
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Google Cloud credentials
+service_account.json

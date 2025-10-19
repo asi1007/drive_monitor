@@ -110,6 +110,36 @@ class DriveMonitor:
             logger.error(f"ファイル取得エラー: {e}")
             return []
 
+    def get_all_files(self, folder_id):
+        """指定されたフォルダから全てのファイルを取得（時間制限なし）"""
+        try:
+            # デバッグ: フォルダの存在確認
+            try:
+                folder_info = self.drive_service.files().get(fileId=folder_id).execute()
+                logger.info(f"フォルダ確認: {folder_info.get('name')} (ID: {folder_id})")
+            except Exception as folder_error:
+                logger.error(f"フォルダアクセスエラー: {folder_error}")
+                return []
+
+            # 時間フィルタなしで全ファイルを取得
+            query = f"'{folder_id}' in parents"
+            logger.info(f"検索クエリ（全ファイル）: {query}")
+
+            results = self.drive_service.files().list(
+                q=query,
+                fields="files(id, name, createdTime, mimeType)",
+                orderBy="createdTime desc"
+            ).execute()
+
+            files = results.get('files', [])
+            logger.info(f"フォルダ内の全ファイル数: {len(files)}")
+
+            return files
+
+        except Exception as e:
+            logger.error(f"全ファイル取得エラー: {e}")
+            return []
+
     def process_excel_file(self, file_id, filename):
         """Excelファイルをダウンロードしてpandasで処理"""
         try:
@@ -264,7 +294,7 @@ class DriveMonitor:
             logger.error(f"YP Excel処理エラー {filename}: {e}")
             return None, []
 
-    def write_to_invoice_sheet(self, tracking_number, asin_list, file_type, filename):
+    def write_to_invoice_sheet(self, tracking_number, asin_list, file_type, filename, created_time):
         """invoiceシートにASINと追跡番号を記載"""
         try:
             # invoiceシートを取得または作成
@@ -273,7 +303,7 @@ class DriveMonitor:
             except gspread.WorksheetNotFound:
                 invoice_sheet = self.spreadsheet.add_worksheet(title="invoice", rows=1000, cols=26)
                 # ヘッダーを追加
-                invoice_sheet.update('A1:D1', [['ファイル名', 'ファイルタイプ', '追跡番号', 'ASIN']])
+                invoice_sheet.update('A1:E1', [['ファイル名', 'ファイルタイプ', '作成日時', '追跡番号', 'ASIN']])
 
             # 現在の最後の行を取得
             all_values = invoice_sheet.get_all_values()
@@ -281,12 +311,12 @@ class DriveMonitor:
 
             # 追跡番号を記載
             if tracking_number:
-                invoice_sheet.update(f'A{next_row}:C{next_row}', [[filename, file_type, tracking_number]])
+                invoice_sheet.update(f'A{next_row}:D{next_row}', [[filename, file_type, created_time, tracking_number]])
                 next_row += 1
 
             # ASINリストを記載
             for asin in asin_list:
-                invoice_sheet.update(f'A{next_row}:D{next_row}', [[filename, file_type, tracking_number or '', asin]])
+                invoice_sheet.update(f'A{next_row}:E{next_row}', [[filename, file_type, created_time, tracking_number or '', asin]])
                 next_row += 1
 
             logger.info(f"invoiceシートに {file_type} ファイル {filename} のデータを記載しました")
@@ -294,13 +324,30 @@ class DriveMonitor:
         except Exception as e:
             logger.error(f"invoiceシート書き込みエラー: {e}")
 
-    def process_file(self, file_info):
+    def process_file(self, file_info, skip_processed_check=False):
         """ファイルを処理"""
         file_id = file_info['id']
         filename = file_info['name']
+        created_time_utc = file_info.get('createdTime', '')  # 作成日時を取得（UTC）
+        
+        # UTC時刻を日本時間に変換
+        created_time_jst = ''
+        if created_time_utc:
+            try:
+                from datetime import timezone
+                # ISO 8601形式の文字列をdatetimeオブジェクトに変換
+                dt_utc = datetime.fromisoformat(created_time_utc.replace('Z', '+00:00'))
+                # 日本時間（UTC+9）に変換
+                jst = timezone(timedelta(hours=9))
+                dt_jst = dt_utc.astimezone(jst)
+                # 読みやすい形式でフォーマット
+                created_time_jst = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+            except Exception as e:
+                logger.warning(f"日時変換エラー: {e}")
+                created_time_jst = created_time_utc
 
-        # 既に処理済みのファイルはスキップ
-        if file_id in self.processed_files:
+        # 既に処理済みのファイルはスキップ（skip_processed_check=Trueの場合は無視）
+        if not skip_processed_check and file_id in self.processed_files:
             return False
 
         file_type = self.detect_file_type(filename)
@@ -317,7 +364,7 @@ class DriveMonitor:
 
         # invoiceシートにデータを記載
         if tracking_number or asin_list:
-            self.write_to_invoice_sheet(tracking_number, asin_list, file_type, filename)
+            self.write_to_invoice_sheet(tracking_number, asin_list, file_type, filename, created_time_jst)
             # 処理済みファイルとして記録
             self.processed_files.add(file_id)
             return True
@@ -348,6 +395,30 @@ class DriveMonitor:
             logger.error(f"ファイル処理エラー: {e}")
             raise
 
+    def process_all_files(self):
+        """フォルダ内の全てのファイルを処理（手動実行用）"""
+        logger.info("Google Drive 全ファイル処理を開始します...")
+
+        try:
+            # フォルダから全ファイルを取得（時間制限なし）
+            all_files = self.get_all_files(self.folder_id)
+
+            if not all_files:
+                logger.info("フォルダ内にファイルが見つかりませんでした")
+                return
+
+            # 各ファイルを処理（処理済みチェックをスキップ）
+            processed_count = 0
+            for file_info in all_files:
+                if self.process_file(file_info, skip_processed_check=True):
+                    processed_count += 1
+
+            logger.info(f"全ファイル処理完了: {processed_count}個のファイルを処理しました")
+
+        except Exception as e:
+            logger.error(f"全ファイル処理エラー: {e}")
+            raise
+
 def main():
     """メイン関数（Cloud Functions対応）"""
     try:
@@ -356,6 +427,16 @@ def main():
         return "処理完了"
     except Exception as e:
         logger.error(f"システム実行エラー: {e}")
+        raise
+
+def process_all_files_main():
+    """全ファイル処理用のメイン関数（手動実行用）"""
+    try:
+        monitor = DriveMonitor()
+        monitor.process_all_files()
+        return "全ファイル処理完了"
+    except Exception as e:
+        logger.error(f"全ファイル処理実行エラー: {e}")
         raise
 
 def cloud_function_entry(_request):
