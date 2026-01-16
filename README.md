@@ -187,15 +187,187 @@ gcloud scheduler jobs create http drive-monitor-job \
 - **`process_yp_file()`**: YP形式ファイルの処理
 - **`update_sheet()`**: Google Sheetsへのデータ更新
 
-## ログ
+## ログの確認方法
 
-処理ログは`drive_monitor.log`ファイルに記録されます。
+このシステムは実行環境によって異なる方法でログを確認できます。
+
+### ローカル実行時
+
+現在の実装では、ログは**コンソール（標準出力）に出力**されます。
+
+```bash
+# 単発実行時はターミナルに直接表示されます
+python run_monitor.py
+
+# 全ファイル処理時
+python process_all.py
+```
+
+**注意**: 現在`drive_monitor.log`ファイルは作成されていません。ファイルに保存したい場合は、下記の「ログをファイルに保存する方法」を参照してください。
+
+### Cloud Functions実行時
+
+GCPのCloud Functionsにデプロイしている場合、Cloud Loggingでログを確認します。
+
+#### 1. gcloudコマンドで確認（推奨）
+
+```bash
+# 最新50件のログを表示
+gcloud functions logs read process_drive_files --limit 50
+
+# リアルタイムでログを監視（Ctrl+Cで終了）
+gcloud functions logs read process_drive_files --limit 50 --follow
+
+# 特定の時間範囲のログを確認
+gcloud functions logs read process_drive_files \
+  --limit 100 \
+  --start-time="2024-01-01T00:00:00Z" \
+  --end-time="2024-01-01T23:59:59Z"
+
+# エラーログのみを表示
+gcloud functions logs read process_drive_files --limit 50 | grep ERROR
+```
+
+#### 2. GCPコンソールで確認
+
+1. [Cloud Functions コンソール](https://console.cloud.google.com/functions/list)にアクセス
+2. `process_drive_files`関数を選択
+3. 「ログ」タブをクリック
+4. または、[Logs Explorer](https://console.cloud.google.com/logs)で詳細なフィルタリングが可能
+
+#### 3. Cloud Schedulerのジョブ実行履歴を確認
+
+```bash
+# スケジュールジョブの一覧を表示
+gcloud scheduler jobs list
+
+# 特定のジョブの詳細を確認
+gcloud scheduler jobs describe drive-monitor-job --location=asia-northeast1
+```
+
+#### 4. アプリケーションの標準出力ログを確認
+
+Cloud Functionsで実行されるアプリケーションの詳細なログ（`logger.info()`や`print()`の出力）を確認するには：
+
+**Cloud Loggingで確認（推奨）**
+
+```bash
+# 標準出力ログを含む全てのログを表示
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=process-drive-files" \
+  --limit=50 \
+  --format="table(timestamp,severity,textPayload)" \
+  --project=yiwu-automate
+
+# 特定の時間範囲のログを確認（最新の実行を見る）
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=process-drive-files AND timestamp>=\"2025-11-14T23:00:00Z\"" \
+  --limit=50 \
+  --format="table(timestamp,severity,textPayload)" \
+  --project=yiwu-automate
+
+# HTTPリクエストのステータスを確認（処理が成功したか）
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=process-drive-files AND httpRequest.requestUrl=~\".*\"" \
+  --limit=20 \
+  --format="table(timestamp,httpRequest.status,httpRequest.latency,httpRequest.requestMethod)" \
+  --project=yiwu-automate
+
+# エラーのみをフィルタ
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=process-drive-files AND severity>=ERROR" \
+  --limit=50 \
+  --project=yiwu-automate
+```
+
+**Logs Explorerで確認（GUIで詳細確認）**
+
+1. [Logs Explorer](https://console.cloud.google.com/logs)にアクセス
+2. 以下のクエリを入力：
+   ```
+   resource.type="cloud_run_revision"
+   resource.labels.service_name="process-drive-files"
+   ```
+3. 時間範囲を選択して、ログの詳細を確認
+
+**手動で関数を実行してログを確認**
+
+```bash
+# 関数を手動で呼び出し
+curl -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
+  https://us-central1-YOUR_PROJECT_ID.cloudfunctions.net/process_drive_files
+
+# 直後にログを確認
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=process-drive-files" \
+  --limit=30 \
+  --format="table(timestamp,severity,textPayload)"
+```
+
+**ログが見えない場合の対処法**
+
+もしアプリケーションログ（`logger.info()`の出力）が表示されない場合は、`main.py`のロギング設定を確認してください。Cloud Functionsでは、標準出力に出力されたログが自動的にCloud Loggingに記録されます。
+
+`main.py`の設定例：
+```python
+import logging
+import sys
+
+# Cloud Functionsでは標準出力に出力
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    stream=sys.stdout  # 標準出力に出力
+)
+```
+
+### ログをファイルに保存する方法
+
+ローカル実行時にログをファイルに保存したい場合は、`drive_monitor.py`の21行目を以下のように変更してください：
+
+**変更前:**
+```python
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+```
+
+**変更後:**
+```python
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('drive_monitor.log'),  # ファイルに出力
+        logging.StreamHandler()  # コンソールにも出力
+    ]
+)
+```
+
+変更後は、以下のコマンドでログを確認できます：
+
+```bash
+# ログファイルの内容を表示
+cat drive_monitor.log
+
+# ログファイルの末尾を表示
+tail -f drive_monitor.log
+
+# ログファイルの最新50行を表示
+tail -n 50 drive_monitor.log
+```
+
+### ログレベルの変更
+
+より詳細なデバッグ情報が必要な場合は、ログレベルを変更できます：
+
+```python
+# DEBUGレベルに変更（より詳細な情報）
+logging.basicConfig(level=logging.DEBUG, ...)
+
+# WARNINGレベルに変更（警告とエラーのみ）
+logging.basicConfig(level=logging.WARNING, ...)
+```
 
 ## 注意事項
 
 - 処理済みファイルは重複処理を避けるため記録されます
 - Google APIの利用制限に注意してください
 - サービスアカウントの権限設定を適切に行ってください
+- Cloud Functionsのログは90日間保持されます（デフォルト設定）
 
 ## トラブルシューティング
 
@@ -204,12 +376,8 @@ gcloud scheduler jobs create http drive-monitor-job \
 1. **認証エラー**: サービスアカウントのJSONファイルと権限設定を確認
 2. **API制限エラー**: リクエスト頻度を調整
 3. **ファイルが見つからない**: フォルダIDとファイル名パターンを確認
-
-### ログの確認
-
-```bash
-tail -f drive_monitor.log
-```
+4. **Cloud Functionsが見つからない**: デプロイされているか確認 (`gcloud functions list`)
+5. **ログが表示されない**: 実行履歴がない、または関数名やリージョンが正しいか確認
 
 ## ライセンス
 
